@@ -47,6 +47,7 @@ export default function Dashboard({ setActivePage }) {
     <div>
       <div className="page-header">
         <h1>Dashboard</h1>
+        <p className="text-gray-400 text-sm">Live Version: {new Date().toLocaleTimeString()}</p>
         <p>Your portfolio at a glance</p>
       </div>
 
