@@ -1,69 +1,92 @@
-import React, { useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase'; // Verify this path matches your project
+import React, { useEffect, useState } from 'react'
+import { supabase } from '../lib/supabase'
+
+const fmt = (n) => 'PKR ' + Number(n).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function History() {
-  const [trades, setTrades] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [trades, setTrades] = useState([])
+  const [loading, setLoading] = useState(true)
 
   const fetchHistory = async () => {
-    setLoading(true);
+    setLoading(true)
+
+    // Get the currently logged-in user
+    const { data: { user } } = await supabase.auth.getUser()
+
+    if (!user) {
+      setLoading(false)
+      return
+    }
+
     const { data, error } = await supabase
-      .from('trade_history') // Matches the new TABLE we created
+      .from('trade_history')
       .select('*')
-      .order('sell_date', { ascending: false });
+      .eq('user_id', user.id)          // ← KEY FIX: filter by logged-in user
+      .order('sell_date', { ascending: false })
 
     if (error) {
-      console.error("Error fetching history:", error.message);
+      console.error('Error fetching history:', error.message)
     } else {
-      setTrades(data || []);
+      setTrades(data || [])
     }
-    setLoading(false);
-  };
+    setLoading(false)
+  }
 
   useEffect(() => {
-    fetchHistory();
-  }, []);
+    fetchHistory()
+  }, [])
 
-  if (loading) return <div className="p-8 text-white">Loading trades...</div>;
+  if (loading) return <div className="loader"><div className="spinner" /></div>
 
   return (
-    <div className="p-8 text-white">
-      <h2 className="text-2xl font-bold mb-6">Trade History</h2>
-      
-      {trades.length === 0 ? (
-        <p className="text-gray-400">No closed positions found.</p>
-      ) : (
-        <div className="overflow-x-auto bg-[#1a1a1a] rounded-lg border border-gray-800">
-          <table className="w-full text-left">
-            <thead className="bg-[#262626] text-gray-400 uppercase text-xs">
-              <tr>
-                <th className="p-4">Stock</th>
-                <th className="p-4">Qty</th>
-                <th className="p-4">Buy Price</th>
-                <th className="p-4">Sell Price</th>
-                <th className="p-4">P&L</th>
-                <th className="p-4">Date</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-800">
-              {trades.map((trade) => (
-                <tr key={trade.id} className="hover:bg-white/5">
-                  <td className="p-4 font-bold">{trade.symbol}</td>
-                  <td className="p-4">{trade.quantity}</td>
-                  <td className="p-4">PKR {trade.buy_price}</td>
-                  <td className="p-4">PKR {trade.sell_price}</td>
-                  <td className={`p-4 font-bold ${trade.profit_loss >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                    PKR {trade.profit_loss}
-                  </td>
-                  <td className="p-4 text-gray-500 text-sm">
-                    {new Date(trade.sell_date).toLocaleDateString()}
-                  </td>
+    <div>
+      <div className="page-header">
+        <h1>Trade History</h1>
+        <p>All your closed positions</p>
+      </div>
+
+      <div className="section-card">
+        {trades.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">📋</div>
+            <h3>No closed positions yet</h3>
+            <p>When you sell a stock from your portfolio, it will appear here.</p>
+          </div>
+        ) : (
+          <div className="stocks-table-wrap">
+            <table className="stocks-table">
+              <thead>
+                <tr>
+                  <th>Stock</th>
+                  <th>Qty</th>
+                  <th>Buy Price</th>
+                  <th>Sell Price</th>
+                  <th>P&amp;L</th>
+                  <th>Date</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+              </thead>
+              <tbody>
+                {trades.map((trade) => (
+                  <tr key={trade.id}>
+                    <td><span className="stock-symbol">{trade.symbol}</span></td>
+                    <td>{trade.quantity}</td>
+                    <td>{fmt(trade.buy_price)}</td>
+                    <td>{fmt(trade.sell_price)}</td>
+                    <td className={trade.profit_loss >= 0 ? 'profit-cell' : 'loss-cell'}>
+                      {trade.profit_loss >= 0 ? '+' : ''}{fmt(trade.profit_loss)}
+                    </td>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 12, opacity: 0.6 }}>
+                      {new Date(trade.sell_date).toLocaleDateString('en-PK', {
+                        year: 'numeric', month: 'short', day: 'numeric'
+                      })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
     </div>
-  );
+  )
 }
