@@ -1,23 +1,17 @@
-# 📈 Stock Stacker — PSX Portfolio Tracker
+ Stock Stacker — PSX Portfolio Tracker
+ 
+ Features
 
-> السلام علیکم — A personal KSE-100 stock portfolio tracker built with React + Supabase
+**Secure login** — each user has their own private portfolio
+**Full portfolio table** — symbol, quantity, buy price, current price
+**Auto-calculated** — invested amount, current value, P&L per stock
+**Total summary** — total invested, total current value, total P&L %
+**Charts** — pie chart (allocation) + bar chart (invested vs current)
+**Add / Edit / Delete** stocks
+**Row Level Security** — no user can ever see another's data
+**Unique theme** — warm cream + dark sidebar, gold accents, Urdu greeting
 
----
-
-## ✨ Features
-
-- 🔐 **Secure login** — each user has their own private portfolio
-- 📊 **Full portfolio table** — symbol, quantity, buy price, current price
-- 💰 **Auto-calculated** — invested amount, current value, P&L per stock
-- 📉 **Total summary** — total invested, total current value, total P&L %
-- 📈 **Charts** — pie chart (allocation) + bar chart (invested vs current)
-- ✏️ **Add / Edit / Delete** stocks
-- 🔒 **Row Level Security** — no user can ever see another's data
-- 🎨 **Unique theme** — warm cream + dark sidebar, gold accents, Urdu greeting
-
----
-
-## 🚀 Quick Start (Local)
+ Quick Start (Local)
 
 ### Step 1 — Install dependencies
 
