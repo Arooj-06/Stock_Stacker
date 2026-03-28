@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Pencil, Trash2, RefreshCw, TrendingUp, TrendingDown, CheckCircle } from 'lucide-react'
+import { Plus, Pencil, Trash2, RefreshCw, CheckCircle } from 'lucide-react'
 import { useStocks } from '../hooks/useStocks'
 import { useToast } from '../hooks/useToast'
 import StockModal from '../components/StockModal'
@@ -7,19 +7,15 @@ import StockModal from '../components/StockModal'
 const fmt = (n) => Number(n).toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 
 export default function Portfolio() {
-  const { stocks, loading, addStock, updateStock, deleteStock, summary, refetch } = useStocks()
+  // ADDED: handleSell was pulled from the useStocks hook
+  const { stocks, loading, addStock, updateStock, deleteStock, handleSell, refetch } = useStocks()
   const { toast, toasts } = useToast()
   const [showModal, setShowModal] = useState(false)
   const [editStock, setEditStock] = useState(null)
   const [deleting, setDeleting] = useState(null)
-  const [kse100, setKse100] = useState('')
-  const [activeTab, setActiveTab] = useState('active')
 
+  // FILTER: Only show active stocks (History page handles the rest now)
   const activeStocks = stocks.filter(s => s.status !== 'sold')
-  const soldStocks = stocks.filter(s => s.status === 'sold')
-
-  const isProfit = summary.totalPL >= 0
-  const plPct = summary.totalInvested > 0 ? ((summary.totalPL / summary.totalInvested) * 100).toFixed(2) : '0.00'
 
   const handleSave = async (data) => {
     if (editStock) {
@@ -33,21 +29,32 @@ export default function Portfolio() {
     setEditStock(null)
   }
 
-  const handleSell = async (stock) => {
+  // UPDATED: Now calls the centralized handleSell from useStocks hook
+  const onSellClick = async (stock) => {
     const qtyInput = window.prompt(`Sell how many shares of ${stock.symbol}?`, stock.quantity)
     const qtyToSell = Number(qtyInput)
-    if (!qtyInput || qtyToSell <= 0 || qtyToSell > stock.quantity) return
-
-    const sellPrice = Number(window.prompt(`Selling price for ${stock.symbol}?`, stock.current_price))
-    if (!sellPrice) return
-
-    if (qtyToSell === stock.quantity) {
-      await updateStock(stock.id, { status: 'sold', sell_price: sellPrice, sell_date: new Date().toISOString() })
-    } else {
-      await updateStock(stock.id, { quantity: stock.quantity - qtyToSell })
-      await addStock({ ...stock, id: undefined, quantity: qtyToSell, sell_price: sellPrice, status: 'sold', sell_date: new Date().toISOString() })
+    
+    if (!qtyInput || qtyToSell <= 0 || qtyToSell > stock.quantity) {
+      toast("Invalid quantity", "error")
+      return
     }
-    toast(`Sold ${qtyToSell} shares of ${stock.symbol}`, 'success')
+
+    const priceInput = window.prompt(`Selling price for ${stock.symbol}?`, stock.current_price)
+    const sellPrice = Number(priceInput)
+    
+    if (!priceInput || sellPrice <= 0) {
+      toast("Invalid price", "error")
+      return
+    }
+
+    // This triggers the database move to the trade_history table
+    const result = await handleSell(stock, qtyToSell, sellPrice)
+    
+    if (result.success) {
+      toast(`Successfully sold ${qtyToSell} shares of ${stock.symbol}! ✨`, 'success')
+    } else {
+      toast("Sale failed. Check console.", "error")
+    }
   }
 
   const handleDelete = async (id, symbol) => {
@@ -65,7 +72,7 @@ export default function Portfolio() {
         <div style={{ display: 'flex', gap: 10 }}>
           <button className="btn btn-ghost btn-sm" onClick={refetch}><RefreshCw size={13} /> Refresh</button>
           <button className="btn btn-primary" onClick={() => { setEditStock(null); setShowModal(true) }}>
-            <Plus size={15} /> Add Stock
+            <Plus size(15) /> Add Stock
           </button>
         </div>
       </div>
@@ -78,29 +85,35 @@ export default function Portfolio() {
                 <tr>
                   <th>Stock</th>
                   <th>Qty</th>
+                  <th>Avg. Price</th>
                   <th>Current</th>
                   <th>P&L</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {activeStocks.map(stock => (
-                  <tr key={stock.id}>
-                    <td className="stock-symbol">{stock.symbol}</td>
-                    <td>{stock.quantity}</td>
-                    <td>{fmt(stock.current_price)}</td>
-                    <td className={stock.current_price >= stock.buy_price ? 'profit-cell' : 'loss-cell'}>
-                      {fmt((stock.current_price - stock.buy_price) * stock.quantity)}
-                    </td>
-                    <td>
-                      <div style={{ display: 'flex', gap: 5 }}>
-                        <button className="btn btn-ghost btn-sm" onClick={() => { setEditStock(stock); setShowModal(true) }}><Pencil size={12} /></button>
-                        <button className="btn btn-emerald btn-sm" onClick={() => handleSell(stock)}><CheckCircle size={12} /> Sell</button>
-                        <button className="btn btn-danger btn-sm" onClick={() => handleDelete(stock.id, stock.symbol)} disabled={deleting === stock.id}><Trash2 size={12} /></button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {activeStocks.length === 0 ? (
+                  <tr><td colSpan="6" className="p-8 text-center text-gray-500">No active stocks in portfolio.</td></tr>
+                ) : (
+                  activeStocks.map(stock => (
+                    <tr key={stock.id}>
+                      <td className="stock-symbol">{stock.symbol}</td>
+                      <td>{stock.quantity}</td>
+                      <td>{fmt(stock.buy_price)}</td>
+                      <td>{fmt(stock.current_price)}</td>
+                      <td className={stock.current_price >= stock.buy_price ? 'profit-cell' : 'loss-cell'}>
+                        {fmt((stock.current_price - stock.buy_price) * stock.quantity)}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 5 }}>
+                          <button className="btn btn-ghost btn-sm" onClick={() => { setEditStock(stock); setShowModal(true) }}><Pencil size={12} /></button>
+                          <button className="btn btn-emerald btn-sm" onClick={() => onSellClick(stock)}><CheckCircle size={12} /> Sell</button>
+                          <button className="btn btn-danger btn-sm" onClick={() => handleDelete(stock.id, stock.symbol)} disabled={deleting === stock.id}><Trash2 size={12} /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
