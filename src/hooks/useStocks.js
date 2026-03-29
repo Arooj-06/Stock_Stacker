@@ -1,101 +1,61 @@
-import { useState, useEffect, useCallback } from 'react'
-import { supabase } from '../lib/supabase'
-import { useAuth } from './useAuth'
+import { useState, useEffect, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
+import { getLivePrice } from '../lib/marketService';
 
 export function useStocks() {
-  const { user } = useAuth()
-  const [stocks, setStocks] = useState([])
-  const [loading, setLoading] = useState(true)
+  const [stocks, setStocks] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [summary, setSummary] = useState({ totalInvested: 0, totalCurrent: 0, totalPL: 0 });
 
   const fetchStocks = useCallback(async () => {
-    if (!user) return
-    setLoading(true)
+    setLoading(true);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     const { data, error } = await supabase
       .from('stocks')
       .select('*')
       .eq('user_id', user.id)
-      .order('created_at', { ascending: false })
-    if (!error) setStocks(data || [])
-    setLoading(false)
-  }, [user])
+      .order('created_at', { ascending: false });
 
-  useEffect(() => { fetchStocks() }, [fetchStocks])
-
-  const addStock = async (stockData) => {
-    const { data, error } = await supabase
-      .from('stocks')
-      .insert([{ ...stockData, user_id: user.id }])
-      .select()
-      .single()
-    if (!error) setStocks(prev => [data, ...prev])
-    return { data, error }
-  }
-
-  const updateStock = async (id, stockData) => {
-    const { data, error } = await supabase
-      .from('stocks')
-      .update(stockData)
-      .eq('id', id)
-      .select()
-      .single()
-    if (!error) setStocks(prev => prev.map(s => s.id === id ? data : s))
-    return { data, error }
-  }
-
-  const deleteStock = async (id) => {
-    const { error } = await supabase
-      .from('stocks')
-      .delete()
-      .eq('id', id)
-    if (!error) setStocks(prev => prev.filter(s => s.id !== id))
-    return { error }
-  }
-
-  // --- NEW: handleSell Function ---
-  const handleSell = async (stock, sellQty, sellPrice) => {
-    try {
-      const profitLoss = (Number(sellPrice) - Number(stock.buy_price)) * Number(sellQty);
-
-      // 1. Record the sale in trade_history table
-      const { error: historyError } = await supabase
-        .from('trade_history')
-        .insert([{
-          user_id: user.id,
-          symbol: stock.symbol,
-          quantity: Number(sellQty),
-          buy_price: Number(stock.buy_price),
-          sell_price: Number(sellPrice),
-          profit_loss: profitLoss,
-          sell_date: new Date().toISOString()
-        }]);
-
-      if (historyError) throw historyError;
-
-      // 2. Update the active stocks table
-      if (Number(sellQty) >= Number(stock.quantity)) {
-        await deleteStock(stock.id);
-      } else {
-        await updateStock(stock.id, { quantity: Number(stock.quantity) - Number(sellQty) });
-      }
-
-      return { success: true };
-    } catch (error) {
-      console.error("Sale failed:", error.message);
-      return { success: false, error };
+    if (!error && data) {
+      setStocks(data);
+      calculateSummary(data);
     }
-  }
+    setLoading(false);
+  }, []);
 
-  // Computed summary
-  const summary = stocks.reduce((acc, s) => {
-    const invested = Number(s.buy_price) * Number(s.quantity)
-    const current = Number(s.current_price) * Number(s.quantity)
-    const pl = current - invested
-    acc.totalInvested += invested
-    acc.totalCurrent += current
-    acc.totalPL += pl
-    return acc
-  }, { totalInvested: 0, totalCurrent: 0, totalPL: 0 })
+  const calculateSummary = (data) => {
+    const active = data.filter(s => s.status !== 'sold');
+    const invested = active.reduce((acc, s) => acc + (Number(s.buy_price) * Number(s.quantity)), 0);
+    const current = active.reduce((acc, s) => acc + (Number(s.current_price) * Number(s.quantity)), 0);
+    setSummary({
+      totalInvested: invested,
+      totalCurrent: current,
+      totalPL: current - invested
+    });
+  };
 
-  // Added handleSell to the return object so other pages can use it
-  return { stocks, loading, addStock, updateStock, deleteStock, handleSell, summary, refetch: fetchStocks }
+  // NEW: Function to sync database with live market prices
+  const syncPrices = async () => {
+    const activeStocks = stocks.filter(s => s.status !== 'sold');
+    if (activeStocks.length === 0) return;
+
+    for (const stock of activeStocks) {
+      const livePrice = await getLivePrice(stock.symbol);
+      if (livePrice && livePrice !== stock.current_price) {
+        await supabase
+          .from('stocks')
+          .update({ current_price: livePrice })
+          .eq('id', stock.id);
+      }
+    }
+    await fetchStocks(); // Refresh UI after updates
+  };
+
+  useEffect(() => {
+    fetchStocks();
+  }, [fetchStocks]);
+
+  return { stocks, loading, summary, syncPrices, refetch: fetchStocks };
 }
